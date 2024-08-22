@@ -5,11 +5,15 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
-# If modifying these SCOPES, delete the file token.json.
-SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
+# This scope allows read/write access to Gmail, including deleting messages.
+SCOPES = ['https://mail.google.com/']
 
 def authenticate():
     creds = None
+    # Delete the token.json file if it exists to force re-authentication with new scopes.
+    if os.path.exists('token.json'):
+        os.remove('token.json')
+    
     if os.path.exists('token.json'):
         creds = Credentials.from_authorized_user_file('token.json', SCOPES)
     if not creds or not creds.valid:
@@ -18,6 +22,7 @@ def authenticate():
         else:
             flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
             creds = flow.run_local_server(port=0)
+        # Save the credentials for the next run
         with open('token.json', 'w') as token:
             token.write(creds.to_json())
     return creds

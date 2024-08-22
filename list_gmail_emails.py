@@ -4,6 +4,10 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # If modifying these SCOPES, delete the file token.json.
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
@@ -40,13 +44,19 @@ def get_email_details(service, message_ids):
         message = service.users().messages().get(userId='me', id=email['id']).execute()
         size = message.get('sizeEstimate', 0)
         total_size += size
+        from_email = next(header['value'] for header in message['payload']['headers'] if header['name'] == 'From')
         email_details.append({
             'id': email['id'],
             'snippet': message['snippet'],
             'size': size,
-            'from': message['payload']['headers'][0]['value']  # Extract sender's email
+            'from': from_email
         })
     return email_details, total_size
+
+def filter_whitelist(emails):
+    whitelist = set(os.getenv('WHITELISTED_EMAILS', '').split(','))
+    filtered_emails = [email for email in emails if not any(whitelisted in email['from'] for whitelisted in whitelist)]
+    return filtered_emails
 
 def main():
     creds = authenticate()
@@ -86,12 +96,15 @@ def main():
     # Combine all details
     emails_to_delete = spam_details + large_details + old_details
 
+    # Filter out whitelisted emails
+    emails_to_delete = filter_whitelist(emails_to_delete)
+
     # Save the email details to a JSON file
     with open('emails_to_delete.json', 'w') as f:
         json.dump(emails_to_delete, f, indent=2)
 
     # Calculate total size to be deleted
-    total_size = spam_total_size + large_total_size + old_total_size
+    total_size = sum(email['size'] for email in emails_to_delete)
 
     # Output statistics to a text file
     with open('deletion_stats.txt', 'w') as f:
@@ -103,15 +116,15 @@ def main():
         f.write("Breakdown by Category:\n")
         f.write("----------------------\n")
         f.write(f"Spam emails:\n")
-        f.write(f"  Number: {len(spam_emails)}\n")
+        f.write(f"  Number: {len(spam_details)}\n")
         f.write(f"  Size: {spam_total_size / (1024 * 1024):.2f} MB\n\n")
 
         f.write(f"Large emails:\n")
-        f.write(f"  Number: {len(large_emails)}\n")
+        f.write(f"  Number: {len(large_details)}\n")
         f.write(f"  Size: {large_total_size / (1024 * 1024):.2f} MB\n\n")
 
         f.write(f"Old emails:\n")
-        f.write(f"  Number: {len(old_emails)}\n")
+        f.write(f"  Number: {len(old_details)}\n")
         f.write(f"  Size: {old_total_size / (1024 * 1024):.2f} MB\n\n")
 
     print(f'Deletion statistics saved to deletion_stats.txt.')
